@@ -1,22 +1,47 @@
 import random
 import sys
+import socket
 
-def drawBoard(board):
+HEADER = 2048
+PORT = 8080
+SERVER = socket.gethostbyname(socket.gethostname())
+ADDR = (SERVER, PORT)
+FORMAT = 'utf-8'
+DISCONNECT_MESSAGE = "!DISCONNECT"
+
+server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server.bind(ADDR)
+
+def send(conn, msg):
+    conn.send(msg.encode(FORMAT))
+
+def receive(conn):
+    msg_length = conn.recv(HEADER).decode(FORMAT)
+    if msg_length:
+        msg_length = int(msg_length)
+        msg = conn.recv(msg_length).decode(FORMAT)
+        return msg
+
+def drawBoard(board, conn):
     # This function prints out the board that it was passed. returns None
+    item = ""
+    
     HLINE = '  +---+---+---+---+---+---+---+---+'
     VLINE = '  |   |   |   |   |   |   |   |   |'
 
-    print('    1   2   3   4   5   6   7   8')
-    print(HLINE)
+    item += "\n" + '    1   2   3   4   5   6   7   8' + "\n"
+    item += HLINE + "\n"
 
     for y in range(8):
-        print(VLINE)
-        print(y + 1, end=' ')
+        item += VLINE + "\n"
+        item += " " + str(y + 1)
         for x in range(8):
-            print('| %s' % (board[x][y]), end=' ')
-        print('|')
-        print(VLINE)
-        print(HLINE)
+            item += '|  ' + str(board[x][y])
+        item += '|' + "\n"
+        item += VLINE + "\n"
+        item += HLINE + "\n"
+
+    send(conn, item)
 
 def resetBoard(board):
     # Blanks out the board if it is passed, except for the original starting position
@@ -120,13 +145,13 @@ def getScoreOfBoard(board):
 
     return {'X':xscore, 'O':oscore}
 
-def enterPlayerTile():
+def enterPlayerTile(conn):
 # Lets the player type which tile they want to be.
 # Returns a list with the player's tile as the first item, and the computer's tile as the second.
     tile = ''
     while not (tile == 'X' or tile == 'O'):
-        print('Do you want to be X or O?')
-        tile = input().upper()
+        send(conn, 'Do you want to be X or O?')
+        tile = receive(conn)
     
     if tile == 'X':
         return ['X', 'O']
@@ -169,13 +194,13 @@ def getBoardCopy(board):
 def isOnCorner(x, y):
     return (x == 0 and y == 0) or (x == 7 and y == 0) or (x == 0 and y == 7) or (x == 7 and y == 7)
 
-def getPlayerMove(board, playerTile):
+def getPlayerMove(board, playerTile, conn):
     # Let the player type in their move.
     # Returns the move as [x, y] (or returns the strings 'hints' or 'quit')
     DIGITS1TO8 = '1 2 3 4 5 6 7 8'.split()
     while True:
-        print('Enter your move, or type quit to end the game, or hints to turn off/on hints.')
-        move = input().lower()
+        send(conn, 'Enter your move')
+        move = receive(conn)
         if move == 'quit':
             return 'quit'
         if move == 'hints':
@@ -190,8 +215,8 @@ def getPlayerMove(board, playerTile):
             else:
                 break
         else:
-            print('That is not a valid move. Type the x digit (1-8), then the y digit (1-8).')
-            print('For example, 81 will be the top-right corner.')
+            send(conn, '')
+            send(conn, '')
     return [x, y]
 
 def getComputerMove(board, computerTile):
@@ -216,70 +241,79 @@ def getComputerMove(board, computerTile):
             bestScore = score
     return bestMove
 
-def showPoints(playerTile, computerTile):
-    # Prints out the current score.
-    scores = getScoreOfBoard(mainBoard)
-    print('You have %s points. The computer has %s points.' % (scores[playerTile], scores[computerTile]))
+# def showPoints(playerTile, computerTile):
+#     # Prints out the current score.
+#     scores = getScoreOfBoard(mainBoard)
+#     print('You have %s points. The computer has %s points.' % (scores[playerTile], scores[computerTile]))
 
 
-
-print('Welcome to Reversi!')
-
-while True:
-# Reset the board and game.
-    mainBoard = getNewBoard()
-    resetBoard(mainBoard)
-    playerTile, computerTile = enterPlayerTile()
-    showHints = False
-    turn = whoGoesFirst()
-    print('The ' + turn + ' will go first.')
-
+def start():
+    server.listen()
+    print(f"[LISTENING] Server is listening on {SERVER}")
     while True:
-        if turn == 'player':
-            # Player's turn.
-            if showHints:
-                validMovesBoard = getBoardWithValidMoves(mainBoard, playerTile)
-                drawBoard(validMovesBoard)
-            else:
-                drawBoard(mainBoard)
-            showPoints(playerTile, computerTile)
-            move = getPlayerMove(mainBoard, playerTile)
-            if move == 'quit':
-                print('Thanks for playing!')
-                sys.exit() # terminate the program
-            elif move == 'hints':
-                showHints = not showHints
-                continue
-            else:
-                makeMove(mainBoard, playerTile, move[0], move[1])
+        conn, addr = server.accept()
 
-            if getValidMoves(mainBoard, computerTile) == []:
-                break
-            else:
-                turn = 'computer'
-        else:
-            # Computer's turn.
+        send(conn, "Welcome to Reversi!")
+        while True:
+            # Reset the board and game.
+            mainBoard = getNewBoard()
+            resetBoard(mainBoard)
+            playerTile, computerTile = enterPlayerTile(conn)
+            showHints = False
+            turn = whoGoesFirst()
+            send(conn, 'The ' + turn + ' will go first.')
+
+            while True:
+                if turn == 'player':
+                    # Player's turn.
+                    if showHints:
+                        validMovesBoard = getBoardWithValidMoves(mainBoard, playerTile)
+                        drawBoard(validMovesBoard, conn)
+                    else:
+                        drawBoard(mainBoard, conn)
+                    #showPoints(playerTile, computerTile)
+                    move = getPlayerMove(mainBoard, playerTile, conn)
+                    if move == 'quit':
+                        print('Thanks for playing!')
+                        sys.exit() # terminate the program
+                    elif move == 'hints':
+                        showHints = not showHints
+                        continue
+                    else:
+                        makeMove(mainBoard, playerTile, move[0], move[1])
+
+                    if getValidMoves(mainBoard, computerTile) == []:
+                        break
+                    else:
+                        turn = 'computer'
+                else:
+                    # Computer's turn.
+                    drawBoard(mainBoard, conn)
+                    #showPoints(playerTile, computerTile)
+                    send(conn, 'Press Enter to see the computer\'s move.')
+                    receive(conn)
+                    x, y = getComputerMove(mainBoard, computerTile)
+                    makeMove(mainBoard, computerTile, x, y)
+
+                    if getValidMoves(mainBoard, playerTile) == []:
+                        break
+                    else:
+                        turn = 'player'
+
+            # Display the final score.
             drawBoard(mainBoard)
-            showPoints(playerTile, computerTile)
-            input('Press Enter to see the computer\'s move.')
-            x, y = getComputerMove(mainBoard, computerTile)
-            makeMove(mainBoard, computerTile, x, y)
-
-            if getValidMoves(mainBoard, playerTile) == []:
-                break
+            scores = getScoreOfBoard(mainBoard)
+            print('X scored %s points. O scored %s points.' % (scores['X'], scores['O']))
+            if scores[playerTile] > scores[computerTile]:
+                print('You beat the computer by %s points! Congratulations!' % (scores[playerTile] - scores[computerTile]))
+            elif scores[playerTile] < scores[computerTile]:
+                    print('You lost. The computer beat you by %s points.' % (scores[computerTile] - scores[playerTile]))
             else:
-                turn = 'player'
+                print('The game was a tie!')
 
-        # Display the final score.
-        drawBoard(mainBoard)
-        scores = getScoreOfBoard(mainBoard)
-        print('X scored %s points. O scored %s points.' % (scores['X'], scores['O']))
-        if scores[playerTile] > scores[computerTile]:
-            print('You beat the computer by %s points! Congratulations!' % (scores[playerTile] - scores[computerTile]))
-        elif scores[playerTile] < scores[computerTile]:
-            print('You lost. The computer beat you by %s points.' % (scores[computerTile] - scores[playerTile]))
-        else:
-            print('The game was a tie!')
+            if not playAgain():
+                 break
 
-        if not playAgain():
-            break
+
+print("[STARTING] server is starting...")
+start()

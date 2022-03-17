@@ -1,8 +1,8 @@
 import socket
 from turtle import st
 
-HEADER = 64
-PORT = 5050
+HEADER = 2048
+PORT = 8080
 FORMAT = 'utf-8'
 DISCONNECT_MESSAGE = "!DISCONNECT"
 SERVER = "192.168.0.104"
@@ -18,9 +18,14 @@ def send(msg):
     send_length += b' ' * (HEADER - len(send_length))
     client.send(send_length)
     client.send(message)
-    print(client.recv(2048).decode(FORMAT))
 
-send("Hello world")
+def receive():
+    print(client.recv(HEADER).decode(FORMAT))
 
-send(DISCONNECT_MESSAGE)
+
+item = ""
+while item != DISCONNECT_MESSAGE:
+    receive()
+    item = input()
+    send(item)
 
