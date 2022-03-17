@@ -2,8 +2,8 @@ from concurrent.futures import thread
 import socket
 import threading
 
-HEADER = 64
-PORT = 5050
+HEADER = 2048
+PORT = 8080
 SERVER = socket.gethostbyname(socket.gethostname())
 ADDR = (SERVER, PORT)
 FORMAT = 'utf-8'
@@ -17,7 +17,7 @@ def handle_client(conn, addr):
 
     connected = True
     while connected:
-        msg_length = conn.recv(HEADER).decode(FORMAT)
+        msg_length = len(conn.recv(HEADER).decode(FORMAT))
         if msg_length:
             msg_length = int(msg_length)
             msg = conn.recv(msg_length).decode(FORMAT)
@@ -25,17 +25,30 @@ def handle_client(conn, addr):
                 connected = False
 
             print(f"[{addr}] {msg}")
-            conn.send("Msg received".encode(FORMAT))
+            conn.send(msg.encode(FORMAT))
     conn.close()
+
+def send(conn, msg):
+    conn.send(msg.encode(FORMAT))
+
+def receive(conn):
+    msg_length = len(conn.recv(HEADER).decode(FORMAT))
+    if msg_length:
+        msg_length = int(msg_length)
+        msg = conn.recv(msg_length).decode(FORMAT)
+        return msg
+
+
 
 def start():
     server.listen()
     print(f"[LISTENING] Server is listening on {SERVER}")
     while True:
         conn, addr = server.accept()
-        thread = threading.Thread(target=handle_client, args=(conn, addr))
-        thread.start()
-        print(f"[ACTIVE CONNECTIONS] {threading.activeCount() - 1}")
+        #handle_client(conn, addr)
+        while True:
+            send(conn, "MY massive balls")
+            print(receive(conn))
 
 
 print("[STARTING] server is starting...")
